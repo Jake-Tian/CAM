@@ -7,6 +7,11 @@ from utils.abstraction_config import AbstractionConfig
 
 
 class IncrementalAbstractionTest(unittest.TestCase):
+    def test_paper_thresholds_are_the_default(self):
+        config = AbstractionConfig()
+        self.assertTrue(config.incremental_enabled)
+        self.assertEqual((config.interval_node, config.interval_pair), (50, 30))
+
     def setUp(self):
         Edge._id_counter = 0
 

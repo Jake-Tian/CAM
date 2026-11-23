@@ -2,7 +2,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.data.reorganize_outputs import PROJECT_ROOT
 from utils.general import find_pkl_files
 
 
@@ -18,9 +17,6 @@ class UtilsStructureTest(unittest.TestCase):
                 find_pkl_files(graph_dir),
                 ["bedroom_01", "gym_02"],
             )
-
-    def test_relocated_data_script_keeps_project_root(self):
-        self.assertEqual(PROJECT_ROOT, Path(__file__).resolve().parents[1])
 
 
 if __name__ == "__main__":

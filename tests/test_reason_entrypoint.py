@@ -1,12 +1,12 @@
+import sys
 import unittest
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage
 
 import reason
-from reasoning_variants.fixed_pipeline_backup import reason_pipeline
 from reasoning.agent import DEFAULT_BUDGET, build_agent
-from reasoning_variants.five_tool_helper import build_agent as legacy_build_agent
 
 
 class _FakeAgent:
@@ -28,11 +28,12 @@ class ReasonEntrypointTest(unittest.TestCase):
         self.assertEqual(result["rounds"], [])
         self.assertEqual(result["token_summaries"], {"total": 7})
 
-    def test_fixed_pipeline_remains_reexported(self):
-        self.assertIs(reason.reason_pipeline, reason_pipeline)
-
-    def test_legacy_five_tool_import_remains_compatible(self):
-        self.assertIs(legacy_build_agent, build_agent)
+    def test_missing_graph_returns_a_failure(self):
+        with TemporaryDirectory() as graph_dir, patch.object(
+            sys, "argv", ["reason.py", "bedroom_01", "--graph-dir", graph_dir, "--out-dir", graph_dir]
+        ):
+            with self.assertRaises(FileNotFoundError):
+                reason.main()
 
 
 if __name__ == "__main__":

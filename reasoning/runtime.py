@@ -93,7 +93,7 @@ def execute_tool_calls(tool_calls, tools_by_name, watched_clips):
                     new_clips.append(args.get("clip_id"))
                 result = tools_by_name[name].invoke(args)
                 observation, tokens = unpack_tool_result(result)
-        except Exception as error:
+        except (TypeError, ValueError, KeyError) as error:
             observation = (
                 f"Tool execution failed: {error}. Check your arguments and try again."
             )

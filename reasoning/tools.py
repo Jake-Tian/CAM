@@ -17,7 +17,7 @@ import glob
 import json
 from pathlib import Path
 from typing import Literal
-from langchain.tools import tool
+from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from utils.llm_gpt import generate_text_response
@@ -26,7 +26,6 @@ from reasoning.prompts import (
     prompt_parse_query,
     prompt_parse_query_no_allocation,
 )
-from utils.search import search_with_parse
 from utils.edge_to_string import high_level_edges_to_string, low_level_edge_to_string
 from classes.output_structure import ParseQueryOutput, ParseQueryOutputNoAllocation
 
@@ -89,48 +88,45 @@ def execute_general_search(graph, query, k_high_level, k_low_level,
     speaker are extracted via the existing prompt_parse_query for quality.
     """
     total_tokens = 0
-    try:
-        query_triples, spatial_constraint, speaker_strict, t = _parse_query_triples(query)
-        total_tokens += t
+    query_triples, spatial_constraint, speaker_strict, t = _parse_query_triples(query)
+    total_tokens += t
 
-        result_sections = []
+    result_sections = []
 
-        if k_high_level > 0:
-            high_level_edges = graph.search_high_level_edges(query_triples, k_high_level)
-            if high_level_edges:
-                hl_str = high_level_edges_to_string(high_level_edges)
-                if hl_str:
-                    result_sections.append("**High-Level Information (Character Attributes and Relationships):**\n" + hl_str)
+    if k_high_level > 0:
+        high_level_edges = graph.search_high_level_edges(query_triples, k_high_level)
+        if high_level_edges:
+            hl_str = high_level_edges_to_string(high_level_edges)
+            if hl_str:
+                result_sections.append("**High-Level Information (Character Attributes and Relationships):**\n" + hl_str)
 
-        if k_appearance > 0:
-            appearance_edges = graph.search_appearance_edges(query_triples, k_appearance)
-            if appearance_edges:
-                app_str = high_level_edges_to_string(appearance_edges)
-                if app_str:
-                    result_sections.append("**Appearance Information:**\n" + app_str)
+    if k_appearance > 0:
+        appearance_edges = graph.search_appearance_edges(query_triples, k_appearance)
+        if appearance_edges:
+            app_str = high_level_edges_to_string(appearance_edges)
+            if app_str:
+                result_sections.append("**Appearance Information:**\n" + app_str)
 
-        if k_low_level > 0:
-            low_level_edges = graph.search_low_level_edges(
-                query_triples, k_low_level, spatial_constraint
-            )
-            if low_level_edges:
-                ll_str = low_level_edge_to_string(low_level_edges)
-                if ll_str:
-                    result_sections.append("**Low-Level Information (Actions and Events):**\n" + ll_str)
+    if k_low_level > 0:
+        low_level_edges = graph.search_low_level_edges(
+            query_triples, k_low_level, spatial_constraint
+        )
+        if low_level_edges:
+            ll_str = low_level_edge_to_string(low_level_edges)
+            if ll_str:
+                result_sections.append("**Low-Level Information (Actions and Events):**\n" + ll_str)
 
-        if k_conversations > 0:
-            conv_results = graph.search_conversations(query, k_conversations, speaker_strict)
-            if conv_results:
-                conv_str = graph.get_conversation_messages_with_context(conv_results)
-                if conv_str:
-                    result_sections.append("**Conversations:**\n" + conv_str)
+    if k_conversations > 0:
+        conv_results = graph.search_conversations(query, k_conversations, speaker_strict)
+        if conv_results:
+            conv_str = graph.get_conversation_messages_with_context(conv_results)
+            if conv_str:
+                result_sections.append("**Conversations:**\n" + conv_str)
 
-        result_str = "\n\n".join(result_sections)
-        if not result_str.strip():
-            return "No relevant information found for this query.", total_tokens
-        return result_str, total_tokens
-    except Exception as e:
-        return f"Error executing general_search: {e}", total_tokens
+    result_str = "\n\n".join(result_sections)
+    if not result_str.strip():
+        return "No relevant information found for this query.", total_tokens
+    return result_str, total_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -299,89 +295,74 @@ def _format_frequency_report(report):
 def execute_get_frequency_stats(graph, video_name, query, top_n=100):
     """Build a recall-oriented event ledger for a repeated completed action."""
     total_tokens = 0
-    try:
-        parse_response, t = generate_text_response(
-            prompt_parse_query_no_allocation + "\n" + query, ParseQueryOutputNoAllocation
-        )
-        total_tokens += (t or 0)
+    parse_response, t = generate_text_response(
+        prompt_parse_query_no_allocation + "\n" + query, ParseQueryOutputNoAllocation
+    )
+    total_tokens += (t or 0)
 
-        query_triples = []
-        if isinstance(parse_response, ParseQueryOutputNoAllocation):
-            query_triples = parse_response.query_triples
-        elif isinstance(parse_response, dict):
-            query_triples = parse_response.get("query_triples", [])
-        elif isinstance(parse_response, tuple) and parse_response:
-            query_triples = getattr(parse_response[0], "query_triples", [])
+    query_triples = []
+    if isinstance(parse_response, ParseQueryOutputNoAllocation):
+        query_triples = parse_response.query_triples
+    elif isinstance(parse_response, dict):
+        query_triples = parse_response.get("query_triples", [])
+    elif isinstance(parse_response, tuple) and parse_response:
+        query_triples = getattr(parse_response[0], "query_triples", [])
 
-        if not query_triples:
-            query_triples = [[query, "?", "?", 0.9, 0.5, 0.5]]
-        query_triples = _normalize_triples(query_triples)
+    if not query_triples:
+        query_triples = [[query, "?", "?", 0.9, 0.5, 0.5]]
+    query_triples = _normalize_triples(query_triples)
 
-        candidate_edges = [
-            edge for edge in graph.edges.values()
-            if edge.clip_id > 0 and edge.scene is not None
-        ]
-        if not candidate_edges:
-            return "No low-level actions found in the graph to aggregate.", total_tokens
+    candidate_edges = [
+        edge for edge in graph.edges.values()
+        if edge.clip_id > 0 and edge.scene is not None
+    ]
+    if not candidate_edges:
+        return "No low-level actions found in the graph to aggregate.", total_tokens
 
-        # Reuse graph similarity when available, otherwise keep a zero-score fallback.
-        scored = []
-        if hasattr(graph, "_compute_edge_similarity") and hasattr(graph, "_get_node_embedding"):
-            try:
-                query_embeddings = []
-                from utils.embedding import get_embedding
-                for q_triple in query_triples:
-                    q_source = q_triple[0] if len(q_triple) > 0 else None
-                    q_content = q_triple[1] if len(q_triple) > 1 else None
-                    q_target = q_triple[2] if len(q_triple) > 2 else None
-                    src_emb = None
-                    if q_source and q_source != "?" and isinstance(q_source, str):
-                        src_name = q_source.strip("<>") if q_source.startswith("<") and q_source.endswith(">") else q_source
-                        try:
-                            src_emb = get_embedding(src_name)
-                        except Exception:
-                            src_emb = None
-                    cnt_emb = None
-                    if q_content and q_content != "?" and isinstance(q_content, str):
-                        try:
-                            cnt_emb = get_embedding(q_content)
-                        except Exception:
-                            cnt_emb = None
-                    tgt_emb = None
-                    if q_target and q_target != "?" and isinstance(q_target, str):
-                        tgt_name = q_target.strip("<>") if q_target.startswith("<") and q_target.endswith(">") else q_target
-                        try:
-                            tgt_emb = get_embedding(tgt_name)
-                        except Exception:
-                            tgt_emb = None
-                    query_embeddings.append([src_emb, cnt_emb, tgt_emb])
-                for edge in candidate_edges:
-                    best = 0.0
-                    for i, q_triple in enumerate(query_triples):
-                        sim = graph._compute_edge_similarity(edge, q_triple, query_embeddings[i])
-                        if isinstance(sim, (int, float)) and sim > best:
-                            best = sim
-                    scored.append((best, edge))
-            except Exception:
-                scored = [(0.0, edge) for edge in candidate_edges]
-        else:
-            scored = [(0.0, edge) for edge in candidate_edges]
+    # Reuse graph similarity when available, otherwise keep a zero-score fallback.
+    scored = []
+    if hasattr(graph, "_compute_edge_similarity") and hasattr(graph, "_get_node_embedding"):
+        query_embeddings = []
+        from utils.embedding import get_embedding
+        for q_triple in query_triples:
+            q_source = q_triple[0] if len(q_triple) > 0 else None
+            q_content = q_triple[1] if len(q_triple) > 1 else None
+            q_target = q_triple[2] if len(q_triple) > 2 else None
+            src_emb = None
+            if q_source and q_source != "?" and isinstance(q_source, str):
+                src_name = q_source.strip("<>") if q_source.startswith("<") and q_source.endswith(">") else q_source
+                src_emb = get_embedding(src_name)
+            cnt_emb = None
+            if q_content and q_content != "?" and isinstance(q_content, str):
+                cnt_emb = get_embedding(q_content)
+            tgt_emb = None
+            if q_target and q_target != "?" and isinstance(q_target, str):
+                tgt_name = q_target.strip("<>") if q_target.startswith("<") and q_target.endswith(">") else q_target
+                tgt_emb = get_embedding(tgt_name)
+            query_embeddings.append([src_emb, cnt_emb, tgt_emb])
+        for edge in candidate_edges:
+            best = 0.0
+            for i, q_triple in enumerate(query_triples):
+                sim = graph._compute_edge_similarity(edge, q_triple, query_embeddings[i])
+                if isinstance(sim, (int, float)) and sim > best:
+                    best = sim
+            scored.append((best, edge))
+    else:
+        scored = [(0.0, edge) for edge in candidate_edges]
 
-        scored.sort(key=lambda x: x[0], reverse=True)
-        scored = scored[:top_n]
-        episodic_memory = _load_episodic_memory(video_name)
-        evidence = _format_frequency_candidates(scored, episodic_memory)
-        if not evidence.strip():
-            return "No matching actions found to aggregate.", total_tokens
+    scored.sort(key=lambda x: x[0], reverse=True)
+    scored = scored[:top_n]
+    episodic_memory = _load_episodic_memory(video_name)
+    evidence = _format_frequency_candidates(scored, episodic_memory)
+    if not evidence.strip():
+        return "No matching actions found to aggregate.", total_tokens
 
-        report, t = generate_text_response(
-            _FREQUENCY_ANALYSIS_PROMPT.format(query=query, evidence=evidence),
-            FrequencyReport,
-        )
-        total_tokens += (t or 0)
-        return _format_frequency_report(report), total_tokens
-    except Exception as e:
-        return f"Error executing get_frequency_stats: {e}", total_tokens
+    report, t = generate_text_response(
+        _FREQUENCY_ANALYSIS_PROMPT.format(query=query, evidence=evidence),
+        FrequencyReport,
+    )
+    total_tokens += (t or 0)
+    return _format_frequency_report(report), total_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -404,14 +385,11 @@ def execute_watch_video_clip(video_name, clip_id, focus):
         "and describe what happens related to the focus. Be concise and factual. "
         "Only report what you can actually see in the frames."
     )
-    try:
-        messages = generate_messages(images, prompt)
-        response, tokens = get_response(messages)
-        if isinstance(response, str):
-            return response, (tokens or 0)
-        return str(response), (tokens or 0)
-    except Exception as e:
-        return f"Error watching video clip {clip_id}: {e}", 0
+    messages = generate_messages(images, prompt)
+    response, tokens = get_response(messages)
+    if isinstance(response, str):
+        return response, (tokens or 0)
+    return str(response), (tokens or 0)
 
 
 # ---------------------------------------------------------------------------

@@ -2,11 +2,11 @@
 
 from functools import lru_cache
 
-from openai import OpenAI
+from utils.llm_gpt import get_client
+
 
 def _create_embeddings(texts):
-    client = OpenAI()
-    response = client.embeddings.create(
+    response = get_client().embeddings.create(
         model="text-embedding-3-small",
         input=texts,
     )

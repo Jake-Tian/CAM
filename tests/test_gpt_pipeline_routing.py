@@ -1,14 +1,9 @@
 import unittest
-import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from utils import llm_gpt
 
-# This test validates API routing only; frame encoding is covered by the
-# pipeline environment and should not require NumPy/OpenCV in a CPU-only shell.
-sys.modules["cv2"] = SimpleNamespace()
-sys.modules["numpy"] = SimpleNamespace(ndarray=type("ndarray", (), {}))
 from utils import mllm_gpt
 
 
@@ -37,7 +32,7 @@ class GptPipelineRoutingTest(unittest.TestCase):
         completions = FakeCompletions()
         client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
         with (
-            patch.object(llm_gpt, "_client", return_value=client),
+            patch.object(llm_gpt, "get_client", return_value=client),
             patch.object(llm_gpt, "MODEL", "gpt-5-mini"),
         ):
             _, usage = llm_gpt.generate_text_response("test")
@@ -51,8 +46,8 @@ class GptPipelineRoutingTest(unittest.TestCase):
         client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
         messages = [{"role": "user", "content": [{"type": "text", "text": "test"}]}]
         with (
-            patch.object(mllm_gpt, "_client", return_value=client),
-            patch.object(mllm_gpt, "MODEL", "gpt-5-mini"),
+            patch.object(llm_gpt, "get_client", return_value=client),
+            patch.object(llm_gpt, "MODEL", "gpt-5-mini"),
         ):
             _, usage = mllm_gpt.get_response(messages)
         self.assertEqual(completions.kwargs["model"], "gpt-5-mini")

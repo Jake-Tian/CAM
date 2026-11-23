@@ -1,7 +1,6 @@
 """Five-tool LangGraph planner, executor, verifier, and answer workflow."""
 
 import operator
-import os
 from typing import Annotated, Literal, TypedDict
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
@@ -27,8 +26,6 @@ from utils.llm_gpt import MODEL
 
 
 DEFAULT_BUDGET = 6
-_API_KEY = os.environ.get("OPENAI_API_KEY")
-_BASE_URL = os.environ.get("OPENAI_BASE_URL")
 
 
 class AgentState(TypedDict):
@@ -41,14 +38,7 @@ class AgentState(TypedDict):
 
 
 def _llm():
-    kwargs = {
-        "model": MODEL,
-        "api_key": _API_KEY,
-        "use_responses_api": True,
-    }
-    if _BASE_URL:
-        kwargs["base_url"] = _BASE_URL
-    return ChatOpenAI(**kwargs)
+    return ChatOpenAI(model=MODEL, use_responses_api=True)
 
 
 def _ensure_completion_call(response, call_id):

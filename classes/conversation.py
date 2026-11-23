@@ -58,11 +58,7 @@ class Conversation:
                     if speaker_name.startswith("<") and speaker_name.endswith(">"):
                         speaker_name = speaker_name[1:-1]
                     formatted_msg = f"{speaker_name}: {content}"
-                    try:
-                        embedding = get_embedding(formatted_msg)
-                    except Exception as e:
-                        print(f"Warning: Failed to get embedding for message, using None: {e}")
-                        embedding = None
+                    embedding = get_embedding(formatted_msg)
                     
                     # Store as [speaker, content, clip_id, embedding]
                     new_messages.append([speaker, content, clip_id, embedding])

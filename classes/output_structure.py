@@ -44,12 +44,3 @@ class ParseQueryOutputNoAllocation(BaseModel):
     query_triples: list[list[str | float | None]] = Field(default_factory=list)
     spatial_constraint: str | None = None
     speaker_strict: list[str] | None = None
-
-class GraphOutputFormat(BaseModel):
-    answer: bool
-    content: str | list[int]
-    summary: str | None = None
-
-class VideoOutputFormat(BaseModel):
-    answer: bool
-    content: str

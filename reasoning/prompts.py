@@ -1,4 +1,4 @@
-"""Prompts used by the default five-tool reasoning agent."""
+"""Prompts for the CAM reasoning agent."""
 
 prompt_parse_query = """
 You are a query parser for a knowledge graph system that stores video information in a hierarchical structure.

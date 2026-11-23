@@ -1,47 +1,23 @@
 import numpy as np
 import os
-import sys
+from contextlib import contextmanager
+from tempfile import NamedTemporaryFile
 from pathlib import Path
 from utils.embedding import get_embedding
 
 
-class Tee:
-    """Write to both file and stdout."""
-    def __init__(self, file):
-        self.file = file
-        self.stdout = sys.stdout
-        
-    def write(self, text):
-        self.file.write(text)
-        self.file.flush()
-        self.stdout.write(text)
-        self.stdout.flush()
-        
-    def flush(self):
-        self.file.flush()
-        self.stdout.flush()
+@contextmanager
+def atomic_output(path, mode):
+    """Replace a result only after serialization succeeds."""
+    encoding = None if "b" in mode else "utf-8"
+    with NamedTemporaryFile(mode=mode, encoding=encoding, dir=path.parent, delete=False) as temp:
+        try:
+            yield temp
+            temp.close()
+            os.replace(temp.name, path)
+        finally:
+            Path(temp.name).unlink(missing_ok=True)
 
-
-class QuietStdout:
-    """Redirect stdout to a file only (terminal stays quiet).
-
-    tqdm writes to stderr by default, so progress bars remain visible in the
-    terminal while all `print(...)` output is captured to the log file.
-    """
-    def __init__(self, file):
-        self.file = file
-
-    def write(self, text):
-        self.file.write(text)
-        self.file.flush()
-
-    def flush(self):
-        self.file.flush()
-
-
-def verbose_terminal() -> bool:
-    """HVM_VERBOSE=1 restores the old verbose terminal output (Tee to both)."""
-    return os.environ.get("HVM_VERBOSE", "0") == "1"
 
 def strip_code_fences(text) -> str:
     """
@@ -67,17 +43,6 @@ def strip_code_fences(text) -> str:
             lines = lines[:-1]
         stripped = "\n".join(lines).strip()
     return stripped
-
-
-def load_video_list(video_list_path="video_list.txt"):
-    """Load video names from video_list.txt."""
-    video_names = []
-    with open(video_list_path, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#'):
-                video_names.append(line)
-    return video_names
 
 
 def cosine_similarity(vec1, vec2):

@@ -1,9 +1,10 @@
-"""
-Add subtitles to video and extract one frame per second with subtitles.
-Saves frames to data/frames/{video_name}/{second}/ directory structure.
-"""
+"""Prepare subtitled frames in sequential 30-second clips."""
+
+import argparse
+import json
 
 import cv2
+from huggingface_hub import hf_hub_download
 import re
 import numpy as np
 from pathlib import Path
@@ -189,8 +190,7 @@ def draw_subtitle_on_frame(frame: np.ndarray, subtitle_text: str,
 
 
 def process_video_with_subtitles(video_path: Path, srt_path: Path, 
-                                  output_frames_dir: Path,
-                                  frames_per_second: int = 1):
+                                  output_frames_dir: Path):
     """
     Process video: extract one frame per second and add subtitles.
     
@@ -198,7 +198,6 @@ def process_video_with_subtitles(video_path: Path, srt_path: Path,
         video_path: Path to input video
         srt_path: Path to SRT subtitle file
         output_frames_dir: Directory to save frames (e.g., data/frames/bedroom_01)
-        frames_per_second: Number of frames to extract per second (default: 1)
     """
     # Parse subtitles
     print(f"Parsing subtitle file: {srt_path}")
@@ -211,6 +210,9 @@ def process_video_with_subtitles(video_path: Path, srt_path: Path,
         raise ValueError(f"Could not open video: {video_path}")
     
     fps = cap.get(cv2.CAP_PROP_FPS)
+    if fps <= 0:
+        cap.release()
+        raise ValueError(f"Video has no frame rate: {video_path}")
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -223,7 +225,7 @@ def process_video_with_subtitles(video_path: Path, srt_path: Path,
     
     # Extract frames - one per second, grouped into folders of 30 frames each
     # Track which seconds we've already extracted
-    extracted_seconds = set()
+    previous_second = -1
     frames_saved = 0
     frames_per_folder = 30
     
@@ -240,7 +242,7 @@ def process_video_with_subtitles(video_path: Path, srt_path: Path,
         current_second = int(current_time)
         
         # Extract one frame per second (only once per second)
-        if current_second not in extracted_seconds and current_second >= 0:
+        if current_second != previous_second:
             # Get subtitle for this time
             subtitle_text = get_subtitle_at_time(subtitles, current_time)
             
@@ -265,9 +267,10 @@ def process_video_with_subtitles(video_path: Path, srt_path: Path,
             
             # Save frame (numbered within folder: 1.jpg, 2.jpg, ..., 30.jpg)
             frame_filename = folder_dir / f"{frame_num_in_folder}.jpg"
-            cv2.imwrite(str(frame_filename), frame_with_subtitle)
+            if not cv2.imwrite(str(frame_filename), frame_with_subtitle):
+                raise OSError(f"Could not write {frame_filename}")
             frames_saved += 1
-            extracted_seconds.add(current_second)
+            previous_second = current_second
             
             if frames_saved % 10 == 0:
                 print(f"  Saved {frames_saved} frames (up to {current_second}s, folder {folder_num})")
@@ -276,142 +279,28 @@ def process_video_with_subtitles(video_path: Path, srt_path: Path,
     
     cap.release()
     print(f"\n✓ Extracted {frames_saved} frames to {output_frames_dir}")
+    if frames_saved == 0 or (total_frames > 0 and frame_count < total_frames):
+        raise ValueError(f"Incomplete video: decoded {frame_count} of {total_frames} frames")
     return frames_saved
 
 
-def main():
-    """Process videos with matching subtitle files.
-    
-    Usage:
-        python add_subtitles_and_extract_frames.py [video_name1] [video_name2] ...
-        
-    If video names are provided, processes only those videos.
-    If no video names are provided, processes all videos in data/videos that have
-    matching subtitle files in data/subtitles/robot.
-        
-    Examples:
-        python add_subtitles_and_extract_frames.py bedroom_01  # Process single video
-        python add_subtitles_and_extract_frames.py bedroom_01 bedroom_02  # Process two videos
-        python add_subtitles_and_extract_frames.py              # Process all videos
-    """
-    import sys
-    
-    # Paths
-    videos_dir = Path("data/videos")
-    subtitles_dir = Path("data/subtitles/robot")
-    frames_base_dir = Path("data/frames")
-    
-    # Get video names from command line arguments (if provided)
-    if len(sys.argv) > 1:
-        # Process specified videos
-        video_names = [arg.replace('.mp4', '') for arg in sys.argv[1:]]
-        videos_to_process = []
-        
-        for video_name in video_names:
-            video_path = videos_dir / f"{video_name}.mp4"
-            srt_path = subtitles_dir / f"{video_name}.srt"
-        
-            if not video_path.exists():
-                print(f"✗ Video file not found: {video_path}")
-                continue
-        
-            if not srt_path.exists():
-                print(f"✗ Subtitle file not found: {srt_path}")
-                continue
-                
-            videos_to_process.append((video_name, video_path, srt_path))
-        
-            if not videos_to_process:
-                print("No valid videos to process.")
-                return
-        
-        # Process each video
-        for video_name, video_path, srt_path in videos_to_process:
-            print(f"\n{'='*60}")
-            print(f"Processing: {video_name}")
-            print(f"{'='*60}")
-            print(f"Video: {video_path}")
-            print(f"Subtitles: {srt_path}")
-            print(f"Output: {frames_base_dir / video_name}")
-            print(f"{'='*60}\n")
-            
-            try:
-                frames_saved = process_video_with_subtitles(
-                    video_path=video_path,
-                    srt_path=srt_path,
-                    output_frames_dir=frames_base_dir / video_name,
-                    frames_per_second=1
-                )
-                print(f"\n✓ Successfully processed {video_name}: {frames_saved} frames saved")
-            except Exception as e:
-                print(f"\n✗ Error processing {video_name}: {e}")
-                import traceback
-                traceback.print_exc()
-    else:
-        # Process all videos with matching subtitle files
-        video_files = list(videos_dir.glob("*.mp4"))
-        if not video_files:
-            print("No video files found in data/videos/")
-            return
-        
-        # Find videos with matching subtitle files
-        videos_to_process = []
-        for video_file in video_files:
-            video_name = video_file.stem
-            srt_path = subtitles_dir / f"{video_name}.srt"
-            if srt_path.exists():
-                videos_to_process.append((video_name, video_file, srt_path))
-            else:
-                print(f"⚠ Skipping {video_name}: No matching subtitle file found")
-        
-        if not videos_to_process:
-            print("No videos with matching subtitle files found.")
-            return
-        
-        print(f"\n{'='*60}")
-        print(f"Found {len(videos_to_process)} video(s) with matching subtitles")
-        print(f"{'='*60}\n")
-        
-        # Process each video
-        successful = 0
-        failed = 0
-        
-        for i, (video_name, video_path, srt_path) in enumerate(videos_to_process, 1):
-            output_frames_dir = frames_base_dir / video_name
-            
-            print(f"\n{'='*60}")
-            print(f"[{i}/{len(videos_to_process)}] Processing: {video_name}")
-            print(f"{'='*60}")
-            print(f"Video: {video_path}")
-            print(f"Subtitles: {srt_path}")
-            print(f"Output: {output_frames_dir}")
-            print(f"{'='*60}\n")
-            
-            try:
-                frames_saved = process_video_with_subtitles(
-                    video_path=video_path,
-                    srt_path=srt_path,
-                    output_frames_dir=output_frames_dir,
-                    frames_per_second=1
-                )
-                print(f"\n✓ Successfully processed {video_name}: {frames_saved} frames saved")
-                successful += 1
-            except Exception as e:
-                print(f"\n✗ Error processing {video_name}: {e}")
-                import traceback
-                traceback.print_exc()
-                failed += 1
-        
-        # Summary
-        print(f"\n{'='*60}")
-        print(f"Processing Summary")
-        print(f"{'='*60}")
-        print(f"Total videos: {len(videos_to_process)}")
-        print(f"Successful: {successful}")
-        print(f"Failed: {failed}")
-        print(f"{'='*60}")
+def prepare_video(video):
+    questions = json.loads(Path("data/robot.json").read_text(encoding="utf-8"))
+    if video not in questions:
+        raise ValueError(f"Unknown Robot video: {video}")
+    repo = "ByteDance-Seed/M3-Bench"
+    # Older checkouts stored downloaded MP4s directly under data/videos.
+    mp4 = Path("data/videos") / f"{video}.mp4"
+    if not mp4.is_file():
+        mp4 = Path(hf_hub_download(repo, f"videos/robot/{video}.mp4",
+                                   repo_type="dataset", local_dir="data"))
+    srt = Path("data/subtitles/robot") / f"{video}.srt"
+    if not srt.is_file():
+        hf_hub_download(repo, f"subtitles/robot/{video}.srt", repo_type="dataset", local_dir="data")
+    process_video_with_subtitles(mp4, srt, Path("data/frames") / video)
 
 
 if __name__ == "__main__":
-    main()
-
+    parser = argparse.ArgumentParser(description="Prepare a single M3-Bench-robot video.")
+    parser.add_argument("video")
+    prepare_video(parser.parse_args().video)

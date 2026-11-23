@@ -1,6 +1,7 @@
 import json
 import re
 import numpy as np
+from openai import BadRequestError
 from .node_class import CharacterNode, ObjectNode
 from .edge_class import Edge
 from .conversation import Conversation
@@ -222,11 +223,7 @@ class HeteroGraph:
                     if speaker_name.startswith("<") and speaker_name.endswith(">"):
                         speaker_name = speaker_name[1:-1]
                     formatted_msg = f"{speaker_name}: {content}"
-                    try:
-                        embedding = get_embedding(formatted_msg)
-                    except Exception as e:
-                        print(f"Warning: Failed to get embedding for message, using None: {e}")
-                        embedding = None
+                    embedding = get_embedding(formatted_msg)
                     formatted_messages.append([speaker, content, clip_id, embedding])
             
             conversation = Conversation(clip_id=clip_id, messages=formatted_messages)
@@ -360,11 +357,7 @@ class HeteroGraph:
         
         new_appearance = character_appearance[char_name]
         
-        try:
-            new_appearance_emb = get_embedding(new_appearance)
-        except Exception as e:
-            print(f"Warning: Failed to get embedding for character appearance: {e}")
-            return None
+        new_appearance_emb = get_embedding(new_appearance)
         
         best_match = None
         best_similarity = 0.0
@@ -375,14 +368,11 @@ class HeteroGraph:
             
             if existing_char_name in character_appearance:
                 existing_appearance = character_appearance[existing_char_name]
-                try:
-                    existing_appearance_emb = get_embedding(existing_appearance)
-                    sim = self._cosine_similarity(new_appearance_emb, existing_appearance_emb)
-                    if sim > best_similarity and sim >= similarity_threshold:
-                        best_similarity = sim
-                        best_match = existing_char_name
-                except Exception as e:
-                    continue
+                existing_appearance_emb = get_embedding(existing_appearance)
+                sim = self._cosine_similarity(new_appearance_emb, existing_appearance_emb)
+                if sim > best_similarity and sim >= similarity_threshold:
+                    best_similarity = sim
+                    best_match = existing_char_name
         
         if best_match:
             old_name_plain = best_match.strip("<>")
@@ -423,10 +413,7 @@ class HeteroGraph:
         # Compute scene embedding once per clip.
         scene_embedding = None
         if scene is not None and str(scene).strip():
-            try:
-                scene_embedding = get_embedding(str(scene))
-            except Exception as e:
-                print(f"Warning: failed to generate scene embedding for clip {clip_id}: {e}")
+            scene_embedding = get_embedding(str(scene))
 
         for triple in triples:
             if not isinstance(triple, list) or len(triple) < 3:
@@ -492,15 +479,12 @@ class HeteroGraph:
                     f"Warning: embedding batch size mismatch in clip {clip_id}: "
                     f"expected {len(edge_embeddings)}, got {len(batch_embeddings)}"
                 )
-        except Exception as e:
+        except BadRequestError as e:
             print(f"Warning: batch edge embedding insertion failed for clip {clip_id}: {e}")
 
         for (source_node_name, target_node_name, edge_content, triple), edge_embedding in zip(parsed_edges, edge_embeddings):
             if edge_embedding is None:
-                try:
-                    edge_embedding = get_embedding(edge_content)
-                except Exception as e:
-                    print(f"Warning: failed to embed edge content '{edge_content}' in clip {clip_id}: {e}")
+                edge_embedding = get_embedding(edge_content)
 
             edge = Edge(
                 clip_id=clip_id,
@@ -666,7 +650,7 @@ class HeteroGraph:
                     edge.embedding = embedding
                     if edge.scene in inserted_by_scene:
                         inserted_by_scene[edge.scene] += 1
-            except Exception as e:
+            except BadRequestError as e:
                 print(
                     "Warning: failed batch embedding insertion for high-level/appearance "
                     f"edges [{start}:{start + len(chunk_edges)}]: {e}"
@@ -674,13 +658,9 @@ class HeteroGraph:
                 # Fall back to per-edge embedding.
                 for idx in chunk_indices:
                     edge = chunk_edges[idx]
-                    try:
-                        edge.embedding = get_embedding(str(edge.content).strip())
-                        if edge.scene in inserted_by_scene:
-                            inserted_by_scene[edge.scene] += 1
-                    except Exception as e2:
-                        skipped += 1
-                        print(f"Warning: failed embedding for {edge.scene} edge '{edge.content}': {e2}")
+                    edge.embedding = get_embedding(str(edge.content).strip())
+                    if edge.scene in inserted_by_scene:
+                        inserted_by_scene[edge.scene] += 1
 
         total_inserted = inserted_by_scene["high-level"] + inserted_by_scene["appearance"]
         print(
@@ -722,13 +702,10 @@ class HeteroGraph:
             for (node_type, node), embedding in zip(node_objects, embeddings):
                 node.embedding = embedding
             print(f"{len(embeddings)} node embeddings inserted ({len([n for n, _ in node_objects if n == 'character'])} characters, {len([n for n, _ in node_objects if n == 'object'])} objects)")
-        except Exception as e:
+        except BadRequestError as e:
             print(f"Warning: Failed to generate node embeddings in batch: {e}")
             for (node_type, node), name in zip(node_objects, node_names_for_embedding):
-                try:
-                    node.embedding = get_embedding(name)
-                except Exception as e2:
-                    print(f"Warning: Failed to generate embedding for {name}: {e2}")
+                node.embedding = get_embedding(name)
 
 
     # --------------------------------------------------------
@@ -738,7 +715,7 @@ class HeteroGraph:
         """Clear incremental-abstraction bookkeeping.
 
         Called at the start of run_abstraction so that replaying abstraction
-        (e.g. from a checkpoint in the ablation script) starts from a clean
+        on an existing graph starts from a clean
         slate regardless of any prior incremental state.
         """
         self._char_consumed_edges = defaultdict(set)
@@ -877,11 +854,7 @@ class HeteroGraph:
             f"Character behaviors (from graph edges):\n{edges_text}"
             f"{existing_section}\n{prompt_character_summary}"
         )
-        try:
-            attributes_response, tokens = generate_text_response(full_prompt)
-        except Exception as e:
-            print(f"LLM call failed, retrying... Error: {e}")
-            attributes_response, tokens = generate_text_response(full_prompt)
+        attributes_response, tokens = generate_text_response(full_prompt)
 
         attributes_response = strip_code_fences(attributes_response)
         try:
@@ -910,7 +883,7 @@ class HeteroGraph:
             )
             try:
                 self.add_high_level_edge(edge)
-            except Exception as e:
+            except (TypeError, ValueError, KeyError) as e:
                 print(
                     f"Warning: Failed to add high-level attribute edge for {character_name} "
                     f"(attribute='{attribute_name}', confidence={confidence}): {e}"
@@ -1001,11 +974,7 @@ class HeteroGraph:
             f"Character interactions (from graph edges):\n{edges_text}"
             f"{existing_section}\n{prompt_character_relationships}"
         )
-        try:
-            relationships_response, tokens = generate_text_response(full_prompt)
-        except Exception as e:
-            print(f"LLM call failed, retrying... Error: {e}")
-            relationships_response, tokens = generate_text_response(full_prompt)
+        relationships_response, tokens = generate_text_response(full_prompt)
 
         relationships_response = strip_code_fences(relationships_response)
         try:
@@ -1053,7 +1022,7 @@ class HeteroGraph:
                 try:
                     self.add_high_level_edge(edge)
                     relationships_created.append(rel)
-                except Exception as e:
+                except (TypeError, ValueError, KeyError) as e:
                     print(f"Failed to add relationship edge: {e}")
                     pass
 
@@ -1108,17 +1077,14 @@ class HeteroGraph:
             if degree >= config.interval_node and (degree - last) >= config.interval_node:
                 eligible_chars.append(char)
         for char in eligible_chars:
-            try:
-                attr_tokens = merge_usage(
-                    attr_tokens,
-                    self.character_attributes(
-                        char,
-                        incremental=True,
-                        through_clip=clip_id,
-                    ),
-                )
-            except Exception as e:
-                print(f"✗ Error in incremental character_attributes for {char}: {e}")
+            attr_tokens = merge_usage(
+                attr_tokens,
+                self.character_attributes(
+                    char,
+                    incremental=True,
+                    through_clip=clip_id,
+                ),
+            )
 
         # Evaluate pairs touched by this clip at each interval_pair crossing.
         evaluated_pairs = set()
@@ -1133,18 +1099,15 @@ class HeteroGraph:
                 count = len(self._shared_low_level_edge_ids(c1, c2, clip_id))
                 last = self._pair_last_degree.get(pair_key, 0)
                 if count >= config.interval_pair and (count - last) >= config.interval_pair:
-                    try:
-                        rel_tokens = merge_usage(
-                            rel_tokens,
-                            self.character_relationships(
-                                c1,
-                                c2,
-                                incremental=True,
-                                through_clip=clip_id,
-                            ),
-                        )
-                    except Exception as e:
-                        print(f"✗ Error in incremental character_relationships for {c1}, {c2}: {e}")
+                    rel_tokens = merge_usage(
+                        rel_tokens,
+                        self.character_relationships(
+                            c1,
+                            c2,
+                            incremental=True,
+                            through_clip=clip_id,
+                        ),
+                    )
 
         return attr_tokens, rel_tokens
 
@@ -1159,13 +1122,10 @@ class HeteroGraph:
         for char in list(self.characters.keys()):
             if self._low_level_degree(char) < config.final_lower_bound_node:
                 continue
-            try:
-                attr_tokens = merge_usage(
-                    attr_tokens,
-                    self.character_attributes(char, incremental=True),
-                )
-            except Exception as e:
-                print(f"✗ Error in final character_attributes for {char}: {e}")
+            attr_tokens = merge_usage(
+                attr_tokens,
+                self.character_attributes(char, incremental=True),
+            )
 
         # Pairs above the pair lower bound (both members above node lower bound).
         eligible = [c for c in self.characters
@@ -1175,13 +1135,10 @@ class HeteroGraph:
                 c1, c2 = eligible[i], eligible[j]
                 if len(self._shared_low_level_edge_ids(c1, c2)) < config.final_lower_bound_pair:
                     continue
-                try:
-                    rel_tokens = merge_usage(
-                        rel_tokens,
-                        self.character_relationships(c1, c2, incremental=True),
-                    )
-                except Exception as e:
-                    print(f"✗ Error in final character_relationships for {c1}, {c2}: {e}")
+                rel_tokens = merge_usage(
+                    rel_tokens,
+                    self.character_relationships(c1, c2, incremental=True),
+                )
 
         return attr_tokens, rel_tokens
 
@@ -1197,7 +1154,7 @@ class HeteroGraph:
            incremental threshold).
 
         Resets incremental bookkeeping at the start so this is safe to call on
-        a checkpoint (e.g. from abstraction_ablation.py) regardless of prior
+        a saved graph regardless of prior
         state. Returns a token-usage summary dict.
         """
         from utils.abstraction_config import AbstractionConfig  # local import avoids cycles
@@ -1257,16 +1214,12 @@ class HeteroGraph:
         formatted_messages = conversation.format_messages()
         full_prompt = prompt_conversation_summary + "\n" + formatted_messages
 
-        try:
-            response, tokens = generate_text_response(full_prompt, text_format=ConversationSummary)
-        except Exception as e:
-            print(f"LLM call failed, retrying... Error: {e}")
-            response, tokens = generate_text_response(full_prompt, text_format=ConversationSummary)
+        response, tokens = generate_text_response(full_prompt, text_format=ConversationSummary)
 
         if isinstance(response, str):
             try:
                 response = ConversationSummary.model_validate_json(strip_code_fences(response))
-            except Exception as e:
+            except (TypeError, ValueError, KeyError) as e:
                 print(f"Failed to parse conversation summary response: {e}")
                 return {
                     "summary": "",
@@ -1305,7 +1258,7 @@ class HeteroGraph:
             )
             try:
                 self.add_high_level_edge(edge)
-            except Exception as e:
+            except (TypeError, ValueError, KeyError) as e:
                 print(f"Warning: Failed to add attribute edge for {char_name}: {e}")
         
         for rel_item in characters_relationships:
@@ -1339,7 +1292,7 @@ class HeteroGraph:
             )
             try:
                 self.add_high_level_edge(edge)
-            except Exception as e:
+            except (TypeError, ValueError, KeyError) as e:
                 print(f"Warning: Failed to add relationship edge between {char1} and {char2}: {e}")
         
         return {
@@ -1400,7 +1353,7 @@ class HeteroGraph:
                 try:
                     self.add_high_level_edge(edge)
                     total_edges += 1
-                except Exception as e:
+                except (TypeError, ValueError, KeyError) as e:
                     print(f"Warning: Failed to add appearance edge for {char_name} (feature: {feature}): {e}")
         
         print(f"✓ Character appearances inserted: {total_edges} appearance edges created")
@@ -1499,7 +1452,7 @@ class HeteroGraph:
         
         try:
             return self._cosine_similarity(node1_embedding, node2_embedding)
-        except Exception:
+        except (TypeError, ValueError, KeyError):
             return 0.0
 
     
@@ -1547,7 +1500,7 @@ class HeteroGraph:
             if edge.embedding is not None:
                 try:
                     content_sim = self._cosine_similarity(content_emb, edge.embedding) * q_content_weight
-                except Exception:
+                except (TypeError, ValueError, KeyError):
                     # Fallback to exact match
                     if edge.content == q_content:
                         content_sim = q_content_weight
@@ -1710,7 +1663,7 @@ class HeteroGraph:
             if edge.embedding is not None:
                 try:
                     content_sim = self._cosine_similarity(content_emb, edge.embedding) * q_content_weight
-                except Exception:
+                except (TypeError, ValueError, KeyError):
                     if edge.content == q_content:
                         content_sim = q_content_weight
 
@@ -1901,21 +1854,11 @@ class HeteroGraph:
             # Calculate scene similarity
             scene_sim = 1.0  # Default to 1.0 if no spatial constraint (no penalty)
             if spatial_embedding and edge.scene:
-                try:
-                    if getattr(edge, "scene_embedding", None) is not None:
-                        edge_scene_emb = edge.scene_embedding
-                    else:
-                        edge_scene_emb = get_embedding(edge.scene)
-                    scene_sim = self._cosine_similarity(spatial_embedding, edge_scene_emb)
-                except Exception:
-                    # Fallback to substring match
-                    if isinstance(spatial_constraints, str):
-                        if spatial_constraints.lower() in edge.scene.lower():
-                            scene_sim = 1.0
-                        else:
-                            scene_sim = 0.0
-                    else:
-                        scene_sim = 0.0
+                if getattr(edge, "scene_embedding", None) is not None:
+                    edge_scene_emb = edge.scene_embedding
+                else:
+                    edge_scene_emb = get_embedding(edge.scene)
+                scene_sim = self._cosine_similarity(spatial_embedding, edge_scene_emb)
             
             # Final score: base_similarity * scene_similarity
             score = base_similarity * scene_sim
@@ -1949,11 +1892,7 @@ class HeteroGraph:
             return []
         
         # Get embedding for query
-        try:
-            query_embedding = get_embedding(query)
-        except Exception as e:
-            print(f"Warning: Failed to get query embedding: {e}")
-            return []
+        query_embedding = get_embedding(query)
         
         # Search through all conversations
         scored_messages = []
@@ -1985,28 +1924,18 @@ class HeteroGraph:
                     continue
                 
                 # Use stored embedding (index 3) - embeddings are pre-computed when messages are added
-                try:
-                    if len(message) >= 4 and message[3] is not None:
-                        message_embedding = message[3]  # Use stored embedding from message (pre-computed)
-                    else:
-                        # Fallback: compute embedding if not stored (shouldn't happen normally)
-                        # Remove angle brackets from speaker name for embedding consistency
-                        speaker_name = speaker
-                        if speaker_name.startswith("<") and speaker_name.endswith(">"):
-                            speaker_name = speaker_name[1:-1]
-                        formatted_message = f"{speaker_name}: {content}"
-                        message_embedding = get_embedding(formatted_message)
+                if len(message) >= 4 and message[3] is not None:
+                    message_embedding = message[3]  # Use stored embedding from message (pre-computed)
+                else:
+                    # Fallback: compute embedding if not stored (shouldn't happen normally)
+                    # Remove angle brackets from speaker name for embedding consistency
+                    speaker_name = speaker
+                    if speaker_name.startswith("<") and speaker_name.endswith(">"):
+                        speaker_name = speaker_name[1:-1]
+                    formatted_message = f"{speaker_name}: {content}"
+                    message_embedding = get_embedding(formatted_message)
                     
-                    text_similarity = self._cosine_similarity(query_embedding, message_embedding)
-                except Exception:
-                    # Fallback to keyword matching
-                    formatted_message = f"{speaker}: {content}"
-                    formatted_lower = formatted_message.lower()
-                    query_lower = query.lower()
-                    if query_lower in formatted_lower or any(word in formatted_lower for word in query_lower.split()):
-                        text_similarity = 0.5
-                    else:
-                        text_similarity = 0.0
+                text_similarity = self._cosine_similarity(query_embedding, message_embedding)
                 
                 # Calculate final score
                 score = text_similarity

@@ -1,21 +1,9 @@
-# Core dependencies for video pipeline
-openai>=1.0.0
-pydantic>=2.0.0
-# opencv-python>=4.8.0
+openai>=2.0
+pydantic>=2.0
 opencv-python-headless==4.10.0.84
-numpy>=1.24.0
-requests>=2.31.0
-tqdm>=4.66.0
-
-huggingface-hub>=0.20.0
-
-# LangGraph agent (planner/executor/verifier/final_answer reasoning)
-langgraph>=0.2.0
-langchain>=0.3.0
-langchain-core>=0.3.0
-langchain-openai>=0.2.0
-
-# Visualization (for visualization/visualize_graph_dedup.py, graph_to_html.py, graph_to_picture.py)
-# pyvis>=0.3.0
-# networkx>=3.0
-# matplotlib>=3.7
+numpy>=1.24
+tqdm>=4.66
+huggingface-hub>=0.24
+langgraph>=1.0
+langchain-core>=1.0
+langchain-openai>=1.0
