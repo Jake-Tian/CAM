@@ -6,7 +6,7 @@ Yizhou Tian, Zizhe Chen, Shiyuan Deng, Garry Yang, Zijie Dai, Luohao Pan, Hao Li
 
 CAM turns a long video into a graph of people, objects, conversations, and timestamped observations. As evidence accumulates, CAM updates summaries of characters and their relationships. At question time, an agent searches the graph and can revisit a clip to check a visual detail.
 
-![CAM method overview. Video observations form a heterogeneous memory graph. A planner, executor, and verifier gather evidence to answer a question.](docs/assets/cam-method-overview.png)
+![CAM method overview. Video observations form a heterogeneous memory graph. A planner, executor, and verifier gather evidence to answer a question.](docs/assets/CAM-Method-Overview-Dashed.png)
 
 The diagram shows the paper's method. The Robot release provides graph search, temporal context, frequency counting, frame rewatching, and a tool to finish the question.
 

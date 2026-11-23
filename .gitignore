@@ -36,7 +36,7 @@ visualization/
 *.jpg
 *.jpeg
 *.png
-!docs/assets/cam-method-overview.png
+!docs/assets/CAM-Method-Overview-Dashed.png
 *.gif
 *.bmp
 *.tiff
