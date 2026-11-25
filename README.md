@@ -1,76 +1,43 @@
-# Hierarchical Video Memory
+# CAM on HippoVlog
 
-Pipeline for building graph memory from videos and answering QA with graph + video reasoning.
+CAM builds a memory graph from vlog frames and uses it to answer multiple-choice questions. HippoVlog has 25 videos with 40 questions each, covering visual details, sounds, audio-visual events, and video summaries. [CAM project](https://github.com/Jake-Tian/CAM#readme) · [HippoVlog frames and audio](https://huggingface.co/datasets/JakeTian/HippoVlog)
 
-## Quick Start
+## Run one video
 
-1. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
+This example builds the graph for `1cU-k5d1DuU` and answers its 40 questions. The branch makes metered OpenAI API calls to `gpt-5-mini` for frames, `gpt-4o-mini` for text generation and QA, and `text-embedding-3-small` for embeddings.
 
-2. **Set API credentials**
-   - Ensure the required OpenAI/HF credentials are available in your environment.
-
-3. **Run the full pipeline**
-   ```bash
-   bash run_video_pipeline.sh
-   ```
-   - Uses `video_list.txt` by default.
-   - You can also pass specific video names:
-     ```bash
-     bash run_video_pipeline.sh part1 part2
-     ```
-
-## What `run_video_pipeline.sh` does
-
-1. Download shared data via `preprocessing/download_hf_folder.py`
-2. Download each video via `preprocessing/download_hf_videos.py`
-3. Build graph memory via `process_full_video.py`
-4. Run QA reasoning via `reason.py`
-5. Clean up downloaded MP4s and extracted frames
-
-## Outputs
-
-Per successfully processed video:
-- `data/graphs/<video>.pkl` (graph memory)
-- `data/memorization/<video>.json` (episodic memory + memory token summary)
-- `data/reasoning/<video>.json` (QA reasoning results)
-
-## Data Structure
-
-Expected layout in `data/` (some folders are created/populated during pipeline runtime):
-
-```text
-data/
-├── frames/
-│   └── <video>/
-│       └── <clip_id>/
-│           └── *.jpg
-├── videos/
-│   └── <video>.mp4
-├── subtitles/
-│   └── robot/
-│       └── <video>.srt
-├── graphs/
-│   └── <video>.pkl
-├── memorization/
-│   └── <video>.json
-├── reasoning/
-│   └── <video>.json
-└── robot.json
+```bash
+git clone --branch HippoVlog https://github.com/Jake-Tian/CAM.git
+cd CAM
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+export OPENAI_API_KEY="your-api-key"
+bash run_video_pipeline.sh 1cU-k5d1DuU
 ```
 
-Notes:
-- `frames/` and `videos/` are temporary runtime artifacts and are cleaned up by `run_video_pipeline.sh`.
-- `graphs/`, `memorization/`, and `reasoning/` are persistent outputs.
+The runner downloads the shared `audio/` folder once per invocation, then downloads the pre-extracted frames for each requested video. To run several videos, pass their IDs as separate arguments. With no arguments, the runner reads `video_list.txt` using Bash 4 or later. It processes up to four videos in parallel by default. Set `MAX_PARALLEL_JOBS=1` for sequential processing. [Video IDs](video_list.txt)
 
-## Project Structure
+## Inputs and outputs
 
-- `preprocessing/` - dataset/video download and preprocessing
-- `classes/` - graph, node, edge, conversation data structures
-- `utils/` - prompts, search, LLM/MLLM helpers
-- `process_full_video.py` - build memory graph from frames
-- `reason.py` - answer questions from built graph + selected video clips
-- `run_video_pipeline.sh` - end-to-end pipeline runner
+| Path | Contents |
+| --- | --- |
+| [`data/questions.jsonl`](data/questions.jsonl) | One question per line with `video_id`, `question_text`, choices A through D in `options`, and the reference letter in `correct_answer` |
+| `data/frames/<video_id>/<clip_id>/*.jpg` | Clip frames used to build the graph and revisit visual evidence |
+| `data/audio/<video_id>.wav` | Full audio track used by the listening tool |
+| `data/graphs/<video_id>.pkl` | Saved memory graph |
+| `data/memorization/<video_id>.json` | Per-clip observations and token counts for graph construction |
+| `data/reasoning/<video_id>.json` | Per-question predictions, reference letters, `evaluate_correct` verdicts, and reasoning traces |
 
+`reason.py` selects questions by `video_id` and scores each predicted option letter by exact match against `correct_answer`. [Scoring code](reason.py)
+
+For questions about sound, the agent exposes a `listen_to_audio` tool. Using it with MoviePy 2 requires changing the clip-slicing call from `subclip()` to `subclipped()`. The tool also sends WAV data to the default vision model, `gpt-5-mini`. Audio queries require a model and request format that accept WAV input. [Audio tool](utils/search_tools.py) · [Model helper](utils/mllm_gpt.py) · [MoviePy clip API](https://zulko.github.io/moviepy/reference/reference/moviepy.Clip.Clip.html#moviepy.Clip.Clip.subclipped) · [Model input types](https://developers.openai.com/api/docs/models/gpt-5-mini)
+
+## Repeat QA with a saved graph
+
+The runner removes each video's frame directory after processing and keeps the audio, graph, and JSON outputs. To repeat QA with frame rewatching, restore the frames and run the question-answering step directly. This rewrites the per-video reasoning JSON.
+
+```bash
+python preprocessing/download_hf_frames.py 1cU-k5d1DuU
+python reason.py 1cU-k5d1DuU
+```
