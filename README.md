@@ -12,17 +12,47 @@ The diagram shows the paper's method. The Robot release provides graph search, t
 
 ## Quick start
 
-From a checkout of this repository, use Python 3.11 and an OpenAI API key with access to GPT-5.2 and `text-embedding-3-small`.
+1. **Create the Conda environment and install dependencies**
 
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-export OPENAI_API_KEY="your-api-key"
-bash run_video_pipeline.sh bedroom_01
-```
+   ```bash
+   conda create -n cam python=3.11 pip -y
+   conda activate cam
+   pip install -r requirements.txt
+   ```
 
-The command downloads the selected Robot video and subtitles, samples one frame per second, builds one graph from 30-second clips, and answers and scores the video's 15 questions. The default character and relationship update thresholds are 50 and 30 new edges. Generation, embedding, and judging use metered API calls. To choose another compatible generation model, set `CAM_MODEL`. A custom `OPENAI_BASE_URL` must support structured chat completions, image inputs, Responses tool calls, and embeddings. [M3-Bench dataset](https://huggingface.co/datasets/ByteDance-Seed/M3-Bench)
+2. **Set your API key**
+
+   ```bash
+   export OPENAI_API_KEY="your-api-key"
+   ```
+
+   CAM uses GPT-5.2 for generation and judging, and `text-embedding-3-small` for retrieval. These calls are metered. Set `CAM_MODEL` to use another compatible generation model. A custom `OPENAI_BASE_URL` must support structured chat completions, image inputs, Responses tool calls, and embeddings.
+
+3. **Check the API connection (optional)**
+
+   ```bash
+   python tests/run_pipeline_preflight.py
+   ```
+
+   This checks the Robot annotations and makes one embedding, one text, and one image request.
+
+4. **Run M3-Bench-robot**
+
+   Run the full benchmark (100 videos, 1,276 questions) with up to four videos in parallel by default.
+
+   ```bash
+   bash run_video_pipeline.sh
+   ```
+
+   For a subset, pass video IDs. This example runs two videos in parallel.
+
+   ```bash
+   MAX_PARALLEL_JOBS=2 bash run_video_pipeline.sh bedroom_01 kitchen_09
+   ```
+
+   To run one video, use `bash run_video_pipeline.sh bedroom_01`. Set `MAX_PARALLEL_JOBS=1` to run videos sequentially. Each selected ID runs once. [Robot video IDs and questions](data/robot.json)
+
+For each video, the script downloads the video and subtitles, samples one frame per second, builds a graph from 30-second clips, then answers and scores its questions. The default character and relationship update thresholds are 50 and 30 new edges. [M3-Bench dataset](https://huggingface.co/datasets/ByteDance-Seed/M3-Bench)
 
 **Example from the recorded Robot experiment** (`bedroom_01_Q01`, 50/30 thresholds)
 
