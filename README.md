@@ -2,21 +2,43 @@
 
 CAM builds a memory graph from vlog frames and uses it to answer multiple-choice questions. HippoVlog has 25 videos with 40 questions each, covering visual details, sounds, audio-visual events, and video summaries. [CAM project](https://github.com/Jake-Tian/CAM#readme) · [HippoVlog frames and audio](https://huggingface.co/datasets/JakeTian/HippoVlog)
 
-## Run one video
+## Quick start
 
-This example builds the graph for `1cU-k5d1DuU` and answers its 40 questions. The branch makes metered OpenAI API calls to `gpt-5-mini` for frames, `gpt-4o-mini` for text generation and QA, and `text-embedding-3-small` for embeddings.
+1. **Check out HippoVlog and create the Conda environment**
 
-```bash
-git clone --branch HippoVlog https://github.com/Jake-Tian/CAM.git
-cd CAM
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-export OPENAI_API_KEY="your-api-key"
-bash run_video_pipeline.sh 1cU-k5d1DuU
-```
+   ```bash
+   git clone --branch HippoVlog https://github.com/Jake-Tian/CAM.git
+   cd CAM
+   conda create -n cam-hippovlog python=3.11 pip -y
+   conda activate cam-hippovlog
+   pip install -r requirements.txt
+   ```
 
-The runner downloads the shared `audio/` folder once per invocation, then downloads the pre-extracted frames for each requested video. To run several videos, pass their IDs as separate arguments. With no arguments, the runner reads `video_list.txt` using Bash 4 or later. It processes up to four videos in parallel by default. Set `MAX_PARALLEL_JOBS=1` for sequential processing. [Video IDs](video_list.txt)
+2. **Set your API key**
+
+   ```bash
+   export OPENAI_API_KEY="your-api-key"
+   ```
+
+   This branch makes metered OpenAI API calls to `gpt-5-mini` for frames, `gpt-4o-mini` for text generation and QA, and `text-embedding-3-small` for embeddings.
+
+3. **Run HippoVlog**
+
+   With Bash 4 or later, run the full benchmark (25 videos, 1,000 questions) with up to four videos in parallel by default.
+
+   ```bash
+   bash run_video_pipeline.sh
+   ```
+
+   For a subset, pass video IDs. This example runs two videos in parallel.
+
+   ```bash
+   MAX_PARALLEL_JOBS=2 bash run_video_pipeline.sh 1cU-k5d1DuU 6Z_qEtbmK34
+   ```
+
+   To run one video and its 40 questions, use `bash run_video_pipeline.sh 1cU-k5d1DuU`. Set `MAX_PARALLEL_JOBS=1` for sequential processing. [Video IDs](video_list.txt)
+
+The runner downloads the shared audio folder once per invocation and the frames for each requested video.
 
 ## Inputs and outputs
 
